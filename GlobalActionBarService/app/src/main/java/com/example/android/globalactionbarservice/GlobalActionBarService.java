@@ -23,6 +23,7 @@ import android.media.AudioManager;
 import android.util.Log;
 import android.view.Gravity;
 import android.view.LayoutInflater;
+import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewConfiguration;
 import android.view.WindowManager;
@@ -42,6 +43,7 @@ public class GlobalActionBarService extends AccessibilityService {
     protected void onServiceConnected() {
         // Create an overlay and display the action bar
         Log.d("DANX", "onServiceConnected");
+
         WindowManager wm = (WindowManager) getSystemService(WINDOW_SERVICE);
         mLayout = new FrameLayout(this);
         WindowManager.LayoutParams lp = new WindowManager.LayoutParams();
@@ -54,12 +56,20 @@ public class GlobalActionBarService extends AccessibilityService {
         LayoutInflater inflater = LayoutInflater.from(this);
         inflater.inflate(R.layout.action_bar, mLayout);
         wm.addView(mLayout, lp);
+        mLayout.setOnTouchListener(new View.OnTouchListener() {
+            @Override
+            public boolean onTouch(View v, MotionEvent event) {
+                Log.d("DANX", "Touch coordinates : " +
+                        String.valueOf(event.getX()) + "x" + String.valueOf(event.getY()));
+                return true;
+            }
+        });
 
 
         configurePowerButton();
-        configureVolumeButton();
-        configureScrollButton();
-        configureSwipeButton();
+//        configureVolumeButton();
+//        configureScrollButton();
+//        configureSwipeButton();
     }
 
 
@@ -85,10 +95,18 @@ public class GlobalActionBarService extends AccessibilityService {
      */
     private void configurePowerButton() {
         Button powerButton = (Button) mLayout.findViewById(R.id.power);
-        powerButton.setOnClickListener(new View.OnClickListener() {
+//        powerButton.setOnClickListener(new View.OnClickListener() {
+//            @Override
+//            public void onClick(View view) {
+//                performGlobalAction(GLOBAL_ACTION_POWER_DIALOG);
+//            }
+//        });
+        powerButton.setOnTouchListener(new View.OnTouchListener() {
             @Override
-            public void onClick(View view) {
-                performGlobalAction(GLOBAL_ACTION_POWER_DIALOG);
+            public boolean onTouch(View v, MotionEvent event) {
+                Log.d("DANX", "power Touch coordinates : " +
+                        String.valueOf(event.getX()) + "x" + String.valueOf(event.getY()));
+                return true;
             }
         });
     }
