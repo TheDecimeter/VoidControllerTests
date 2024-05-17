@@ -16,10 +16,12 @@ package com.example.android.globalactionbarservice;
 
 import android.accessibilityservice.AccessibilityService;
 import android.accessibilityservice.GestureDescription;
+import android.annotation.SuppressLint;
 import android.graphics.Path;
 import android.graphics.PixelFormat;
 import android.graphics.PointF;
 import android.media.AudioManager;
+import android.text.Layout;
 import android.util.Log;
 import android.view.Gravity;
 import android.view.LayoutInflater;
@@ -35,8 +37,30 @@ import android.widget.FrameLayout;
 import java.util.ArrayDeque;
 import java.util.Deque;
 
+
+import android.accessibilityservice.AccessibilityService;
+import android.content.Intent;
+import android.graphics.PixelFormat;
+import android.graphics.Rect;
+import android.os.Handler;
+import android.util.Log;
+import android.view.Gravity;
+import android.view.View;
+import android.view.WindowManager;
+import android.view.WindowManager.LayoutParams;
+import android.view.accessibility.AccessibilityEvent;
+import android.view.accessibility.AccessibilityNodeInfo;
+
+import java.io.IOException;
+import java.net.DatagramPacket;
+import java.net.DatagramSocket;
+import java.net.SocketException;
+
 public class GlobalActionBarService extends AccessibilityService {
     FrameLayout mLayout;
+    private View cursorView;
+
+    private int lastX = 0, lastY=0, firstX=0, firstY=0;
 
 
     @Override
@@ -50,26 +74,93 @@ public class GlobalActionBarService extends AccessibilityService {
         lp.type = WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY;
         lp.format = PixelFormat.TRANSLUCENT;
         lp.flags |= WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE;
-        lp.width = WindowManager.LayoutParams.WRAP_CONTENT;
-        lp.height = WindowManager.LayoutParams.WRAP_CONTENT;
-        lp.gravity = Gravity.TOP;
+//        lp.width = WindowManager.LayoutParams.WRAP_CONTENT;
+//        lp.height = WindowManager.LayoutParams.WRAP_CONTENT;
+//        lp.gravity = Gravity.TOP;
         LayoutInflater inflater = LayoutInflater.from(this);
         inflater.inflate(R.layout.action_bar, mLayout);
         wm.addView(mLayout, lp);
-        mLayout.setOnTouchListener(new View.OnTouchListener() {
+        cursorView=(View) mLayout.findViewById(R.id.trackCursor);
+        View trackPad = (View) mLayout.findViewById(R.id.trackpad);
+        trackPad.setOnTouchListener(new View.OnTouchListener() {
+            @SuppressLint("ClickableViewAccessibility")
             @Override
             public boolean onTouch(View v, MotionEvent event) {
-                Log.d("DANX", "Touch coordinates : " +
+                switch(event.getAction()){
+                    case MotionEvent.ACTION_DOWN:{
+                        firstX=lastX= (int) event.getX();
+                        firstY=lastY= (int) event.getY();
+                        break;
+                    }
+                    case MotionEvent.ACTION_MOVE: {
+                        moveCursor((int)event.getX(), (int)event.getY());
+                        break;
+                    }
+                    case MotionEvent.ACTION_UP:{
+                        int dist = (int)(Math.pow(firstX-lastX,2)+Math.pow(firstY-lastY,2));
+                        Log.d("danx", "click "+dist);
+                        if(dist<20){
+                            //click
+                            createClick(cursorView.getX(), cursorView.getY());
+                        }
+                        break;
+                    }
+                }
+                Log.d("DANX", "Touch trackpad coordinates : " +
                         String.valueOf(event.getX()) + "x" + String.valueOf(event.getY()));
                 return true;
             }
         });
+        mLayout.setOnTouchListener(new View.OnTouchListener() {
+            @Override
+            public boolean onTouch(View v, MotionEvent event) {
+                Log.d("DANX", "Touch layout coordinates : " +
+                        String.valueOf(event.getX()) + "x" + String.valueOf(event.getY()));
+                return false;
+            }
+        });
+    }
 
+    private void createClick(float x, float y) {
 
-        configurePowerButton();
-//        configureVolumeButton();
-//        configureScrollButton();
-//        configureSwipeButton();
+        GestureResultCallback callback = new AccessibilityService.GestureResultCallback() {
+            @Override
+            public void onCompleted(GestureDescription gestureDescription) {
+                super.onCompleted(gestureDescription);
+                Log.d("danx", "gesture completed");
+            }
+
+            @Override
+            public void onCancelled(GestureDescription gestureDescription) {
+                super.onCancelled(gestureDescription);
+                Log.d("danx", "gesture cancelled");
+            }
+        };
+
+        Log.d("danx", "click "+x+", "+y);
+        // for a single tap a duration of 1 ms is enough
+        final int DURATION = 1;
+
+        Path clickPath = new Path();
+        clickPath.moveTo(x, y);
+        GestureDescription.StrokeDescription clickStroke =
+                new GestureDescription.StrokeDescription(clickPath, 0, DURATION);
+        GestureDescription.Builder clickBuilder = new GestureDescription.Builder();
+        clickBuilder.addStroke(clickStroke);
+        this.dispatchGesture(clickBuilder.build(), callback, null);
+    }
+
+    private void moveCursor(int newX, int newY){
+        try {
+            int dx = lastX - newX, dy = lastY - newY;
+            cursorView.setX(cursorView.getX()-dx);
+            cursorView.setY(cursorView.getY()-dy);
+            lastX = newX;
+            lastY = newY;
+        }
+        catch(Exception e){
+            Log.e("DANX", "moveCursor Exception" + e.getMessage());
+        }
     }
 
 
@@ -86,107 +177,4 @@ public class GlobalActionBarService extends AccessibilityService {
     }
 
 
-    /**
-     * Don't get excited, this is just a software power button
-     *
-     * but...
-     * might be useful for emmiting certain key presses globally (dpad?)
-     * might be useful for keeping soft keyboard hidden (if using keyboard on external display)
-     */
-    private void configurePowerButton() {
-        Button powerButton = (Button) mLayout.findViewById(R.id.power);
-//        powerButton.setOnClickListener(new View.OnClickListener() {
-//            @Override
-//            public void onClick(View view) {
-//                performGlobalAction(GLOBAL_ACTION_POWER_DIALOG);
-//            }
-//        });
-        powerButton.setOnTouchListener(new View.OnTouchListener() {
-            @Override
-            public boolean onTouch(View v, MotionEvent event) {
-                Log.d("DANX", "power Touch coordinates : " +
-                        String.valueOf(event.getX()) + "x" + String.valueOf(event.getY()));
-                return true;
-            }
-        });
-    }
-
-    private void configureVolumeButton() {
-        Button volumeUpButton = (Button) mLayout.findViewById(R.id.volume_up);
-        volumeUpButton.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View view) {
-                AudioManager audioManager = (AudioManager) getSystemService(AUDIO_SERVICE);
-                audioManager.adjustStreamVolume(AudioManager.STREAM_MUSIC,
-                        AudioManager.ADJUST_RAISE, AudioManager.FLAG_SHOW_UI);
-            }
-        });
-    }
-
-
-
-    private AccessibilityNodeInfo findScrollableNode(AccessibilityNodeInfo root) {
-        Deque<AccessibilityNodeInfo> deque = new ArrayDeque<>();
-        deque.add(root);
-        while (!deque.isEmpty()) {
-            AccessibilityNodeInfo node = deque.removeFirst();
-            if (node.getActionList().contains(AccessibilityNodeInfo.AccessibilityAction.ACTION_SCROLL_FORWARD)) {
-                return node;
-            }
-            for (int i = 0; i < node.getChildCount(); i++) {
-                deque.addLast(node.getChild(i));
-            }
-        }
-        return null;
-    }
-
-    private void configureScrollButton() {
-        Button scrollButton = (Button) mLayout.findViewById(R.id.scroll);
-        scrollButton.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View view) {
-                AccessibilityNodeInfo scrollable = findScrollableNode(getRootInActiveWindow());
-                if (scrollable != null) {
-                    scrollable.performAction(AccessibilityNodeInfo.AccessibilityAction.ACTION_SCROLL_FORWARD.getId());
-                }
-            }
-        });
-    }
-
-    /**
-     * I think this is where the magic's at for any track pad type implementation
-     */
-    private void configureSwipeButton() {
-        Button swipeButton = (Button) mLayout.findViewById(R.id.swipe);
-        swipeButton.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View view) {
-                Path swipePath = new Path();
-                swipePath.moveTo(1000, 1000);
-                swipePath.lineTo(100, 1000);
-                GestureDescription.Builder gestureBuilder = new GestureDescription.Builder();
-                gestureBuilder.addStroke(new GestureDescription.StrokeDescription(swipePath, 0, 500));
-                dispatchGesture(gestureBuilder.build(), null, null);
-            }
-        });
-    }
-
-    /**
-     * https://stackoverflow.com/questions/50775698/how-can-i-reliably-simulate-touch-events-on-android-without-root-like-automate
-     * @param x
-     * @param y
-     * @return
-     */
-    private GestureDescription createClick(float x, float y) {
-        // for a single tap a duration of 1 ms is enough
-        final int DURATION = 1;
-
-        Path clickPath = new Path();
-        clickPath.moveTo(x, y);
-        GestureDescription.StrokeDescription clickStroke =
-                new GestureDescription.StrokeDescription(clickPath, 0, DURATION);
-        GestureDescription.Builder clickBuilder = new GestureDescription.Builder();
-        clickBuilder.addStroke(clickStroke);
-        return clickBuilder.build();
-    }
 }
